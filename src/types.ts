@@ -22,6 +22,13 @@ export interface PriorityItem {
   completed: boolean;
 }
 
+export interface ReminderItem {
+  id: string;
+  text: string;
+  time: string; // e.g., "۱۴:۳۰"
+  completed: boolean;
+}
+
 export interface DailyPlan {
   dateKey: string; // Gregorian "YYYY-MM-DD"
   priorities: PriorityItem[]; // Exactly 3 items
@@ -32,7 +39,25 @@ export interface DailyPlan {
   energy: number; // 1 to 5
   notes: string;
   planTomorrow: string; // Advanced notes or tasks for tomorrow
+  reminders?: ReminderItem[]; // Option to have reminders for the day
 }
+
+export interface WeeklyReflection {
+  weekKey: string; // e.g., "1405-W18"
+  whatWentWell: string;
+  whatToImprove: string;
+  mainFocusNextWeek: string;
+  completedAt?: string; // date ISO string
+}
+
+export interface MonthlyReflection {
+  monthKey: string; // e.g., "1405-M04"
+  whatWentWell: string;
+  whatToImprove: string;
+  mainFocusNextMonth: string;
+  completedAt?: string; // date ISO string
+}
+
 
 export interface HabitDefinition {
   id: string;

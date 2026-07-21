@@ -205,3 +205,34 @@ export function getPersianWeekdayIndex(date: Date): number {
   // Fri: 5 -> 6
   return (gDay + 1) % 7;
 }
+
+/**
+ * Calculates day of the Jalali year.
+ */
+export function getJalaliDayOfYear(jy: number, jm: number, jd: number): number {
+  let dayOfYear = 0;
+  for (let m = 1; m < jm; m++) {
+    dayOfYear += getDaysInJalaliMonth(jy, m);
+  }
+  dayOfYear += jd;
+  return dayOfYear;
+}
+
+/**
+ * Gets a stable Jalali week identifier for the given date.
+ */
+export function getJalaliWeekKey(date: Date): string {
+  const { jy, jm, jd } = gregorianToJalali(date);
+  const dayOfYear = getJalaliDayOfYear(jy, jm, jd);
+  const weekNum = Math.ceil(dayOfYear / 7);
+  return `${jy}-W${weekNum}`;
+}
+
+/**
+ * Gets a stable Jalali month identifier for the given date.
+ */
+export function getJalaliMonthKey(date: Date): string {
+  const { jy, jm } = gregorianToJalali(date);
+  return `${jy}-M${String(jm).padStart(2, '0')}`;
+}
+
