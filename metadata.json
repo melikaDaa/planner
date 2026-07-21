@@ -1,0 +1,6 @@
+{
+  "name": "دفترچه برنامه‌ریزی روزانه",
+  "description": "یک دفترچه برنامه‌ریزی روزانه مینیمال و زیبا با پشتیبانی کامل از تقویم شمسی، برنامه‌ریزی برای فردا، ردیاب عادت‌ها و یادداشت‌ها.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
