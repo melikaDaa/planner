@@ -19,7 +19,7 @@ export function gregorianToJalali(date: Date): JalaliDate {
 
   const g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334, 365];
   let gy2 = (gm > 2) ? (gy + 1) : gy;
-  let j_day_no = 365 * gy + Math.floor((gy + 3) / 4) - Math.floor((gy + 99) / 100) + Math.floor((gy + 399) / 400) - 80 + gd + g_d_m[gm - 1];
+  let j_day_no = 365 * gy + Math.floor((gy2 + 3) / 4) - Math.floor((gy2 + 99) / 100) + Math.floor((gy2 + 399) / 400) - 80 + gd + g_d_m[gm - 1];
   let jy = 979 + 33 * Math.floor(j_day_no / 12053); /* 12053 = 365*33 + 32/4 */
   j_day_no %= 12053;
   jy += 4 * Math.floor(j_day_no / 1461); /* 1461 = 365*4 + 1 */
@@ -194,16 +194,18 @@ export function toGregorianDateString(date: Date): string {
  * Gets the Persian weekday index (0 for شنبه (Saturday) to 6 for جمعه (Friday)).
  */
 export function getPersianWeekdayIndex(date: Date): number {
-  const gDay = date.getDay(); // 0 is Sunday, 1 is Monday... 6 is Saturday
-  // Map Gregorian day to Persian day index
-  // Sat: 6 -> 0
-  // Sun: 0 -> 1
-  // Mon: 1 -> 2
-  // Tue: 2 -> 3
-  // Wed: 3 -> 4
-  // Thu: 4 -> 5
-  // Fri: 5 -> 6
-  return (gDay + 1) % 7;
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  const gDay = d.getDay(); // 0 is Sunday, 1 is Monday... 6 is Saturday
+  switch (gDay) {
+    case 6: return 0; // شنبه (Saturday)
+    case 0: return 1; // یکشنبه (Sunday)
+    case 1: return 2; // دوشنبه (Monday)
+    case 2: return 3; // سه‌شنبه (Tuesday)
+    case 3: return 4; // چهارشنبه (Wednesday)
+    case 4: return 5; // پنج‌شنبه (Thursday)
+    case 5: return 6; // جمعه (Friday)
+    default: return 0;
+  }
 }
 
 /**
@@ -219,10 +221,12 @@ export function getJalaliDayOfYear(jy: number, jm: number, jd: number): number {
 }
 
 /**
- * Gets a stable Jalali week identifier for the given date.
+ * Gets a stable Jalali week identifier for the week containing `date`, anchored on its Saturday.
  */
 export function getJalaliWeekKey(date: Date): string {
-  const { jy, jm, jd } = gregorianToJalali(date);
+  const weekDays = getJalaliWeekDays(date);
+  const saturday = weekDays[0];
+  const { jy, jm, jd } = gregorianToJalali(saturday);
   const dayOfYear = getJalaliDayOfYear(jy, jm, jd);
   const weekNum = Math.ceil(dayOfYear / 7);
   return `${jy}-W${weekNum}`;
@@ -234,5 +238,22 @@ export function getJalaliWeekKey(date: Date): string {
 export function getJalaliMonthKey(date: Date): string {
   const { jy, jm } = gregorianToJalali(date);
   return `${jy}-M${String(jm).padStart(2, '0')}`;
+}
+
+/**
+ * Returns array of 7 Date objects representing Saturday through Friday for the week containing `date`.
+ */
+export function getJalaliWeekDays(date: Date): Date[] {
+  // Normalize to local noon (12:00:00) to prevent any UTC/timezone shifts
+  const dLocal = new Date(date.getFullYear(), date.getMonth(), date.getDate(), 12, 0, 0);
+  const weekdayIndex = getPersianWeekdayIndex(dLocal);
+  const saturday = new Date(dLocal.getFullYear(), dLocal.getMonth(), dLocal.getDate() - weekdayIndex, 12, 0, 0);
+
+  const weekDays: Date[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(saturday.getFullYear(), saturday.getMonth(), saturday.getDate() + i, 12, 0, 0);
+    weekDays.push(d);
+  }
+  return weekDays;
 }
 

@@ -8,17 +8,17 @@ import {
   getJalaliMonthKey 
 } from "../utils/jalali";
 import { 
-  BookOpen, 
   Check, 
   CheckCircle, 
-  Clock, 
   Sparkles, 
   Award, 
-  TrendingUp, 
   AlertCircle, 
-  ChevronLeft, 
   X,
-  FileText
+  Heart,
+  Flame,
+  Calendar,
+  Smile,
+  HelpCircle
 } from "lucide-react";
 import { motion } from "motion/react";
 
@@ -54,7 +54,7 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
       .map((dateStr) => savedPlans[dateStr]);
   }, [savedPlans, reviewKey, type]);
 
-  // 2. Calculate real-time statistics
+  // 2. Calculate reflective metrics
   const stats = React.useMemo(() => {
     let tasksPlanned = 0;
     let tasksCompleted = 0;
@@ -70,6 +70,10 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
       label: string;
     }
     const dayRatios: DayRatio[] = [];
+
+    // Calculate weekly streak (consecutive days with completed tasks)
+    let currentStreak = 0;
+    let maxStreak = 0;
 
     relevantDays.forEach((day) => {
       let dayTotal = 0;
@@ -92,7 +96,7 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
         }
       });
 
-      // Simple tasks
+      // Tasks
       day.tasks?.forEach((t) => {
         if (t.text.trim()) {
           dayTotal++;
@@ -130,6 +134,13 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
         }
       });
 
+      if (dayCompleted > 0) {
+        currentStreak++;
+        if (currentStreak > maxStreak) maxStreak = currentStreak;
+      } else {
+        currentStreak = 0;
+      }
+
       if (dayTotal > 0) {
         dayRatios.push({
           dateStr: day.dateKey,
@@ -139,8 +150,8 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
       }
     });
 
-    // Determine most productive day
-    let mostProductiveDayLabel = "—";
+    // Most productive day
+    let mostProductiveDayLabel = "ثبت نشده";
     if (dayRatios.length > 0) {
       const sorted = [...dayRatios].sort((a, b) => b.ratio - a.ratio);
       if (sorted[0].ratio > 0) {
@@ -148,22 +159,8 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
       }
     }
 
-    // Determine completion rates
     const taskPercent = tasksPlanned > 0 ? Math.round((tasksCompleted / tasksPlanned) * 100) : 0;
     const habitPercent = habitsPlanned > 0 ? Math.round((habitsCompleted / habitsPlanned) * 100) : 0;
-    const totalPercent = (tasksPlanned + habitsPlanned) > 0 
-      ? Math.round(((tasksCompleted + habitsCompleted) / (tasksPlanned + habitsPlanned)) * 100) 
-      : 0;
-
-    // Motivational Quote Choice
-    let motivationalText = "هنوز داده‌ای ثبت نشده است. هفته را با آرامش آغاز کنید.";
-    if (totalPercent > 75) {
-      motivationalText = "پیگیری فوق‌العاده‌ای داشتید! تمرکز و انضباط شما در نوشتن و اجرای اهدافتان ستودنی است.";
-    } else if (totalPercent > 40) {
-      motivationalText = "تعادل بسیار خوبی برقرار است. همین مسیر پیوسته و بدون شتاب، راز اصلی ماندگاری است.";
-    } else if (totalPercent > 0) {
-      motivationalText = "بازنگری کارهای انجام‌نشده، خود نیمی از راه رشد است. برای روزهای آینده صبور و مهربان باشید.";
-    }
 
     return {
       tasksPlanned,
@@ -172,26 +169,33 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
       habitsPlanned,
       habitsCompleted,
       habitPercent,
+      weeklyStreak: maxStreak,
       mostProductiveDayLabel,
       goalsAchieved: Array.from(new Set(goalsAchieved)).slice(0, 5),
-      unfinishedTasks: Array.from(new Set(unfinishedTasks)).slice(0, 5),
-      motivationalText,
-      totalPercent
+      unfinishedTasks: Array.from(new Set(unfinishedTasks)).slice(0, 5)
     };
-  }, [relevantDays, type]);
+  }, [relevantDays]);
 
-  // Local state for freeform reflection inputs
+  // Freeform reflection states
   const [whatWentWell, setWhatWentWell] = React.useState(reflection?.whatWentWell || "");
   const [whatToImprove, setWhatToImprove] = React.useState(reflection?.whatToImprove || "");
+  const [biggestAchievement, setBiggestAchievement] = React.useState(reflection?.biggestAchievement || "");
   const [mainFocus, setMainFocus] = React.useState(
-    reflection?.mainFocusNextWeek || reflection?.mainFocusNextMonth || ""
+    type === "weekly"
+      ? (reflection?.mainFocusNextWeek || "")
+      : (reflection?.mainFocusNextMonth || "")
   );
 
   React.useEffect(() => {
     setWhatWentWell(reflection?.whatWentWell || "");
     setWhatToImprove(reflection?.whatToImprove || "");
-    setMainFocus(reflection?.mainFocusNextWeek || reflection?.mainFocusNextMonth || "");
-  }, [reflection]);
+    setBiggestAchievement(reflection?.biggestAchievement || "");
+    setMainFocus(
+      type === "weekly"
+        ? (reflection?.mainFocusNextWeek || "")
+        : (reflection?.mainFocusNextMonth || "")
+    );
+  }, [reflection, type]);
 
   const handleSave = () => {
     const updatedReflection = {
@@ -200,6 +204,7 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
       monthKey: type === "monthly" ? reviewKey : undefined,
       whatWentWell,
       whatToImprove,
+      biggestAchievement,
       [type === "weekly" ? "mainFocusNextWeek" : "mainFocusNextMonth"]: mainFocus,
       completedAt: new Date().toISOString()
     };
@@ -207,223 +212,153 @@ export const ReviewPages: React.FC<ReviewPagesProps> = ({
     onClose();
   };
 
-  const titleVerbal = type === "weekly" ? "مرور هفتگی" : "مرور ماهانه";
-  const descVerbal = type === "weekly" 
-    ? "زمانی برای تنفس، بازنگری و تنظیم آرام اهداف هفته آینده" 
-    : "گامی کوتاه برای نگاه به مسیر سپری‌شده و بازیابی تمرکز ماهانه";
+  const titleVerbal = type === "weekly" ? "صفحه بازتاب و مرور هفتگی" : "صفحه بازتاب و مرور ماهانه";
+  const periodLabel = type === "weekly" ? "هفته آینده" : "ماه آینده";
 
   return (
-    <div className="fixed inset-0 z-50 bg-[#1e1a15]/30 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto font-sans">
+    <div className="fixed inset-0 z-50 bg-[#161d18]/40 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto font-sans">
       
-      {/* Notebook Spread Layout */}
+      {/* Paper Review Modal Container */}
       <motion.div 
         initial={{ opacity: 0, scale: 0.95, y: 15 }}
         animate={{ opacity: 1, scale: 1, y: 0 }}
         exit={{ opacity: 0, scale: 0.95 }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
-        className="w-full max-w-5xl bg-[#e6ded5] rounded-3xl p-2.5 sm:p-4 shadow-2xl border border-[#dbcfc2] min-h-[600px] grid grid-cols-1 md:grid-cols-21 relative"
+        transition={{ duration: 0.3, ease: "easeOut" }}
+        className="w-full max-w-4xl bg-[#e3eae4] dark:bg-[#141d18] rounded-3xl p-3 sm:p-5 shadow-2xl border border-[#cbd8ce] dark:border-[#2d3e33] flex flex-col justify-between min-h-[620px] relative"
       >
         {/* Close Button */}
         <button
           id="close-review-modal"
           onClick={onClose}
-          className="absolute top-4 left-4 z-50 p-2 rounded-full bg-white/80 hover:bg-white text-[#574f41] cursor-pointer shadow-md border border-[#eaddcf] transition-all active:scale-95"
-          title="بستن و ورود به دفترچه"
+          className="absolute top-4 left-4 z-50 p-2 rounded-full bg-white dark:bg-[#1f2c25] hover:bg-[#f2f6f3] dark:hover:bg-[#27382e] text-[#2d3a31] dark:text-[#f0f7f2] cursor-pointer shadow-md border border-[#d2e0d5] dark:border-[#2d3e33] transition-all active:scale-95"
+          title="بستن"
         >
-          <X size={16} />
+          <X size={18} />
         </button>
 
-        {/* LEFT PAGE - Performance & Notebook statistics */}
-        <div className="md:col-span-10 flex flex-col bg-[#fcfbf9] rounded-2xl p-5 sm:p-7 left-page-curl border border-[#eaddcf] relative overflow-hidden">
-          
-          {/* Notebook line detail */}
-          <div className="absolute right-10 top-0 bottom-0 w-[1px] border-r border-[#fca5a5] opacity-40 pointer-events-none" />
-
-          <div className="space-y-6 relative z-10 flex-1 flex flex-col">
-            {/* Header */}
-            <div className="border-b border-[#f5ebe0] pb-4">
-              <div className="flex items-center gap-2 mb-1">
-                <div className="p-1.5 bg-[#8c7851]/10 rounded-lg text-[#8c7851]">
-                  <Award size={18} />
-                </div>
-                <h2 className="text-xl font-bold text-[#44403c]">{titleVerbal}</h2>
-              </div>
-              <p className="text-xs text-[#8c7a5c] leading-relaxed">{descVerbal}</p>
-            </div>
-
-            {/* Core Metrics */}
-            <div className="grid grid-cols-3 gap-3">
-              <div className="bg-[#faf7f2] border border-[#f2e7da] p-3 rounded-xl text-center">
-                <span className="block text-[10px] font-bold text-[#8c7a5c] mb-1">کارهای انجام شده</span>
-                <span className="text-lg font-bold text-[#44403c] font-mono">
-                  {toPersianDigits(stats.tasksCompleted)} <span className="text-xs font-normal text-[#a89a7a]">از</span> {toPersianDigits(stats.tasksPlanned)}
-                </span>
-                <div className="w-full bg-[#eae0d5] h-1.5 rounded-full mt-2 overflow-hidden">
-                  <div className="bg-[#8c7851] h-full rounded-full transition-all" style={{ width: `${stats.taskPercent}%` }} />
-                </div>
-              </div>
-
-              <div className="bg-[#faf7f2] border border-[#f2e7da] p-3 rounded-xl text-center">
-                <span className="block text-[10px] font-bold text-[#8c7a5c] mb-1">پایداری عادت‌ها</span>
-                <span className="text-lg font-bold text-[#44403c] font-mono">
-                  {toPersianDigits(stats.habitsCompleted)} <span className="text-xs font-normal text-[#a89a7a]">بار</span>
-                </span>
-                <div className="w-full bg-[#eae0d5] h-1.5 rounded-full mt-2 overflow-hidden">
-                  <div className="bg-emerald-600 h-full rounded-full transition-all" style={{ width: `${stats.habitPercent}%` }} />
-                </div>
-              </div>
-
-              <div className="bg-[#faf7f2] border border-[#f2e7da] p-3 rounded-xl text-center flex flex-col justify-between">
-                <span className="block text-[10px] font-bold text-[#8c7a5c] mb-1">روز با تمرکز کامل</span>
-                <span className="text-xs font-bold text-[#8c7851] truncate py-1.5">
-                  {stats.mostProductiveDayLabel}
-                </span>
-                <span className="text-[9px] text-[#bcaf9c]">بیشترین درصد تکمیل</span>
-              </div>
-            </div>
-
-            {/* Encouraging Quote Block */}
-            <div className="bg-[#f5ebe0]/40 border border-[#ecdccb]/80 p-3.5 rounded-xl text-right">
-              <div className="flex items-center gap-1.5 mb-1 text-[#8c7851]">
-                <Sparkles size={14} />
-                <span className="text-xs font-bold">پیشرفت مسیر شما</span>
-              </div>
-              <p className="text-xs text-[#574f41] leading-relaxed">{stats.motivationalText}</p>
-            </div>
-
-            {/* Goals Achieved Lists */}
-            <div className="space-y-3 flex-1">
-              <div>
-                <h4 className="text-xs font-bold text-[#8c7a5c] flex items-center gap-1.5 mb-2">
-                  <CheckCircle size={13} className="text-emerald-600" />
-                  <span>برخی اهداف محقق شده این دوره:</span>
-                </h4>
-                {stats.goalsAchieved.length === 0 ? (
-                  <p className="text-xs text-[#bcaf9c] italic pr-5">هنوز هدفی تکمیل نشده است.</p>
-                ) : (
-                  <ul className="space-y-1.5 pr-4">
-                    {stats.goalsAchieved.map((goal, idx) => (
-                      <li key={idx} className="text-xs text-[#574f41] flex items-start gap-1.5 leading-relaxed">
-                        <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full mt-1.5 flex-shrink-0" />
-                        <span className="truncate">{goal}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-
-              {/* Tasks left unfinished */}
-              <div className="pt-2 border-t border-[#f5ebe0]">
-                <h4 className="text-xs font-bold text-[#8c7a5c] flex items-center gap-1.5 mb-2">
-                  <AlertCircle size={13} className="text-[#c5a880]" />
-                  <span>کارهای مانده برای دوره بعد:</span>
-                </h4>
-                {stats.unfinishedTasks.length === 0 ? (
-                  <p className="text-xs text-[#bcaf9c] italic pr-5">همه کارها با موفقیت به اتمام رسیده‌اند! 🎉</p>
-                ) : (
-                  <ul className="space-y-1.5 pr-4">
-                    {stats.unfinishedTasks.map((task, idx) => (
-                      <li key={idx} className="text-xs text-[#6b6661] flex items-start gap-1.5 leading-relaxed">
-                        <span className="w-1.5 h-1.5 bg-[#c5b394] rounded-full mt-1.5 flex-shrink-0" />
-                        <span className="truncate">{task}</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-
+        {/* Header */}
+        <div className="bg-white dark:bg-[#1f2c25] border border-[#d2e0d5] dark:border-[#2d3e33] rounded-2xl p-4 mb-4 paper-shadow flex items-center gap-3">
+          <div className="p-2.5 bg-[#2e4f40] text-white rounded-xl shadow-xs">
+            <Award size={20} />
+          </div>
+          <div>
+            <h2 className="text-base sm:text-lg font-bold text-[#1a231e] dark:text-[#f0f7f2]">{titleVerbal}</h2>
+            <p className="text-xs text-[#526357] dark:text-[#b0d2bc]">
+              نگاهی صمیمانه و آرام به مسیر طی‌شده • مرور دستاوردها و تنظیم جهت دوره بعد
+            </p>
           </div>
         </div>
 
-        {/* CENTER SPIRAL WIRE (Column 11 on Desktop) */}
-        <div className="hidden md:flex md:col-span-1 flex-col justify-center items-center z-20 pointer-events-none">
-          {Array.from({ length: 11 }).map((_, i) => (
-            <div key={i} className="flex flex-col items-center justify-between h-9 my-2.5">
-              <div className="w-4 h-3 bg-gradient-to-r from-[#cbd5e1] via-[#f1f5f9] to-[#94a3b8] rounded-full shadow border border-[#b8c2cc]" />
-              <div className="flex justify-between w-8 -mt-1 z-10">
-                <div className="w-2 h-2 bg-[#45403a] rounded-full shadow-inner opacity-75" />
-                <div className="w-2 h-2 bg-[#45403a] rounded-full shadow-inner opacity-75" />
-              </div>
-            </div>
-          ))}
+        {/* Minimal Reflective Summary Pills */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 mb-4">
+          <div className="bg-white dark:bg-[#1f2c25] border border-[#d2e0d5] dark:border-[#2d3e33] p-3 rounded-2xl text-center paper-shadow">
+            <span className="text-[10px] font-bold text-[#526357] dark:text-[#b0d2bc] block mb-1">کارهای انجام‌شده</span>
+            <span className="text-base font-bold text-[#1a231e] dark:text-[#f0f7f2]">
+              {toPersianDigits(stats.tasksCompleted)} <span className="text-xs text-[#829487] dark:text-[#88a896]">از {toPersianDigits(stats.tasksPlanned)}</span>
+            </span>
+          </div>
+
+          <div className="bg-white dark:bg-[#1f2c25] border border-[#d2e0d5] dark:border-[#2d3e33] p-3 rounded-2xl text-center paper-shadow">
+            <span className="text-[10px] font-bold text-[#526357] dark:text-[#b0d2bc] block mb-1">پایداری عادت‌ها</span>
+            <span className="text-base font-bold text-[#2e4f40] dark:text-emerald-400">
+              {toPersianDigits(stats.habitPercent)}٪
+            </span>
+          </div>
+
+          <div className="bg-white dark:bg-[#1f2c25] border border-[#d2e0d5] dark:border-[#2d3e33] p-3 rounded-2xl text-center paper-shadow">
+            <span className="text-[10px] font-bold text-[#526357] dark:text-[#b0d2bc] block mb-1 flex items-center justify-center gap-1">
+              <Flame size={12} className="text-emerald-700 dark:text-emerald-400" />
+              <span>تسلسل استمرار</span>
+            </span>
+            <span className="text-base font-bold text-[#2e4f40] dark:text-emerald-400">
+              {toPersianDigits(stats.weeklyStreak)} روز
+            </span>
+          </div>
+
+          <div className="bg-white dark:bg-[#1f2c25] border border-[#d2e0d5] dark:border-[#2d3e33] p-3 rounded-2xl text-center paper-shadow">
+            <span className="text-[10px] font-bold text-[#526357] dark:text-[#b0d2bc] block mb-1">پرپایه‌ترین روز</span>
+            <span className="text-xs font-bold text-[#1a231e] dark:text-[#f0f7f2] truncate block py-0.5">
+              {stats.mostProductiveDayLabel}
+            </span>
+          </div>
         </div>
 
-        {/* RIGHT PAGE - Freeform writing inputs / reflections */}
-        <div className="md:col-span-10 flex flex-col bg-[#fcfbf9] rounded-2xl p-5 sm:p-7 right-page-curl border border-[#eaddcf] relative overflow-hidden">
-          
-          {/* Notebook line detail */}
-          <div className="absolute left-10 top-0 bottom-0 w-[1px] border-l border-[#fca5a5] opacity-40 pointer-events-none" />
-
-          <div className="space-y-5 relative z-10 flex-1 flex flex-col justify-between">
-            
-            <div className="space-y-4">
-              <h3 className="text-sm font-bold text-[#44403c] border-b border-[#f5ebe0] pb-2 flex items-center gap-1.5">
-                <FileText size={16} className="text-[#8c7851]" />
-                <span>برگ بازتاب و یادداشت شخصی</span>
-              </h3>
-
-              {/* Box 1: What went well? */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#574f41] block">چه چیزهایی در این دوره خوب پیش رفت؟</label>
-                <div className="lined-paper rounded-xl border border-[#eaddcf] bg-[#fdfdfc] p-2 min-h-[90px]">
-                  <textarea
-                    id="well-textarea"
-                    value={whatWentWell}
-                    onChange={(e) => setWhatWentWell(e.target.value)}
-                    placeholder="مثلاً: تعادل خواب، تمرکز مستمر روی اولویت اول..."
-                    className="w-full bg-transparent border-none focus:outline-none text-xs text-[#44403c] placeholder-[#d0c6b8] resize-none leading-7"
-                    rows={3}
-                  />
-                </div>
-              </div>
-
-              {/* Box 2: What could be improved? */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#574f41] block">چه مواردی نیاز به بهبود یا برنامه‌ریزی بهتر دارد؟</label>
-                <div className="lined-paper rounded-xl border border-[#eaddcf] bg-[#fdfdfc] p-2 min-h-[90px]">
-                  <textarea
-                    id="improve-textarea"
-                    value={whatToImprove}
-                    onChange={(e) => setWhatToImprove(e.target.value)}
-                    placeholder="مثلاً: مدیریت زمان‌های اتلاف‌شده در غروب..."
-                    className="w-full bg-transparent border-none focus:outline-none text-xs text-[#44403c] placeholder-[#d0c6b8] resize-none leading-7"
-                    rows={3}
-                  />
-                </div>
-              </div>
-
-              {/* Box 3: Next period focus */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-[#574f41] block">
-                  {type === "weekly" ? "تمرکز یا هدف اصلی هفته آینده چیست؟" : "اهداف و تمرکز محوری ماه آینده چیست؟"}
-                </label>
-                <div className="lined-paper rounded-xl border border-[#eaddcf] bg-[#fdfdfc] p-2 min-h-[90px]">
-                  <textarea
-                    id="focus-textarea"
-                    value={mainFocus}
-                    onChange={(e) => setMainFocus(e.target.value)}
-                    placeholder="یک یا دو کار محوری که تمام تمرکزتان را روی آن می‌گذارید..."
-                    className="w-full bg-transparent border-none focus:outline-none text-xs text-[#44403c] placeholder-[#d0c6b8] resize-none leading-7"
-                    rows={3}
-                  />
-                </div>
-              </div>
-            </div>
-
-            {/* Save & Finish Button */}
-            <div className="pt-4 border-t border-[#f5ebe0] flex items-center justify-end">
-              <button
-                id="save-review-btn"
-                onClick={handleSave}
-                className="flex items-center gap-1.5 px-6 py-2.5 bg-[#8c7851] text-white hover:bg-[#7c6a46] rounded-xl text-xs font-semibold cursor-pointer transition-colors shadow-md active:scale-95"
-              >
-                <Check size={14} className="stroke-[3]" />
-                <span>ثبت بازنگری و ورود به دفترچه</span>
-              </button>
-            </div>
-
+        {/* 4 Core Reflection Questions */}
+        <div className="bg-white dark:bg-[#1f2c25] border border-[#d2e0d5] dark:border-[#2d3e33] rounded-2xl p-4 sm:p-5 mb-4 paper-shadow space-y-4 flex-1">
+          <div className="flex items-center gap-1.5 border-b border-[#e2ece4] dark:border-[#2d3e33] pb-2">
+            <HelpCircle size={16} className="text-[#2e4f40] dark:text-emerald-400" />
+            <h3 className="text-sm font-bold text-[#1a231e] dark:text-[#f0f7f2]">پرسش‌های بازتاب شخصی (Self-Reflection)</h3>
           </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Question 1 */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#2d3a31] dark:text-[#aee2c2] block">
+                ۱. چه چیزهایی در این دوره خوب پیش رفت؟
+              </label>
+              <textarea
+                value={whatWentWell}
+                onChange={(e) => setWhatWentWell(e.target.value)}
+                placeholder="اتفاقات مثبت، برنامه‌هایی که طبق زمان انجام شد..."
+                className="w-full bg-[#f8faf8] dark:bg-[#141d18] border border-[#d2e0d5] dark:border-[#2d3e33] rounded-xl p-2.5 text-xs text-[#1a231e] dark:text-[#f0f7f2] placeholder-[#829487] dark:placeholder-[#88a896] focus:outline-none focus:border-[#2e4f40] focus:ring-2 focus:ring-[#2e4f40]/20 resize-none h-[75px] leading-relaxed font-medium"
+              />
+            </div>
+
+            {/* Question 2 */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#2d3a31] dark:text-[#aee2c2] block">
+                ۲. چه مواردی باید برای {periodLabel} بهتر شود؟
+              </label>
+              <textarea
+                value={whatToImprove}
+                onChange={(e) => setWhatToImprove(e.target.value)}
+                placeholder="عواملی که تمرکزتان را بهم زد یا نیاز به بهبود دارد..."
+                className="w-full bg-[#f8faf8] dark:bg-[#141d18] border border-[#d2e0d5] dark:border-[#2d3e33] rounded-xl p-2.5 text-xs text-[#1a231e] dark:text-[#f0f7f2] placeholder-[#829487] dark:placeholder-[#88a896] focus:outline-none focus:border-[#2e4f40] focus:ring-2 focus:ring-[#2e4f40]/20 resize-none h-[75px] leading-relaxed font-medium"
+              />
+            </div>
+
+            {/* Question 3 */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#2d3a31] dark:text-[#aee2c2] block">
+                ۳. بزرگ‌ترین دستاورد این دوره چه بود؟
+              </label>
+              <textarea
+                value={biggestAchievement}
+                onChange={(e) => setBiggestAchievement(e.target.value)}
+                placeholder="موفقیت یا حس افتخاری که در این مدت کسب کردید..."
+                className="w-full bg-[#f8faf8] dark:bg-[#141d18] border border-[#d2e0d5] dark:border-[#2d3e33] rounded-xl p-2.5 text-xs text-[#1a231e] dark:text-[#f0f7f2] placeholder-[#829487] dark:placeholder-[#88a896] focus:outline-none focus:border-[#2e4f40] focus:ring-2 focus:ring-[#2e4f40]/20 resize-none h-[75px] leading-relaxed font-medium"
+              />
+            </div>
+
+            {/* Question 4 */}
+            <div className="space-y-1">
+              <label className="text-xs font-bold text-[#2d3a31] dark:text-[#aee2c2] block">
+                ۴. تمرکز اصلی برای {periodLabel} چیست؟
+              </label>
+              <textarea
+                value={mainFocus}
+                onChange={(e) => setMainFocus(e.target.value)}
+                placeholder={`یک یا دو هدف اصلی که کل ${periodLabel} بر پایه آن خواهد بود...`}
+                className="w-full bg-[#f8faf8] dark:bg-[#141d18] border border-[#d2e0d5] dark:border-[#2d3e33] rounded-xl p-2.5 text-xs text-[#1a231e] dark:text-[#f0f7f2] placeholder-[#829487] dark:placeholder-[#88a896] focus:outline-none focus:border-[#2e4f40] focus:ring-2 focus:ring-[#2e4f40]/20 resize-none h-[75px] leading-relaxed font-medium"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Footer Actions */}
+        <div className="bg-white dark:bg-[#1f2c25] border border-[#d2e0d5] dark:border-[#2d3e33] rounded-2xl p-3 flex items-center justify-between text-xs text-[#526357] dark:text-[#b0d2bc] paper-shadow">
+          <div className="flex items-center gap-1.5">
+            <Sparkles size={14} className="text-[#2e4f40] dark:text-emerald-400" />
+            <span>گزارش بازتاب شما به‌طور ایمن در مرورگر ذخیره می‌گردد.</span>
+          </div>
+
+          <button
+            onClick={handleSave}
+            className="px-5 py-2.5 bg-[#2e4f40] text-white hover:bg-[#233f33] rounded-xl font-bold cursor-pointer transition-all active:scale-95 shadow-xs flex items-center gap-1.5"
+          >
+            <Check size={16} />
+            <span>ثبت بازتاب و ذخیره</span>
+          </button>
         </div>
 
       </motion.div>

@@ -13,38 +13,44 @@ import {
   DailyPlan, 
   HabitDefinition, 
   TaskItem, 
+  TimelineItem,
+  WeeklyPlan,
   WeeklyReflection, 
   MonthlyReflection,
   ReminderItem
 } from "./types";
 import { PersianCalendar } from "./components/PersianCalendar";
 import { PrioritiesList } from "./components/PrioritiesList";
-import { TaskList } from "./components/TaskList";
+import { UnifiedTaskList } from "./components/UnifiedTaskList";
 import { HabitTracker } from "./components/HabitTracker";
-import { TimelineSchedule } from "./components/TimelineSchedule";
 import { MoodAndEnergy } from "./components/MoodAndEnergy";
 import { PlanTomorrow } from "./components/PlanTomorrow";
 import { ReminderSystem } from "./components/ReminderSystem";
 import { ReviewPages } from "./components/ReviewPages";
+import { WeeklyPlanner } from "./components/WeeklyPlanner";
 import { 
   BookOpen, 
   ChevronLeft, 
   ChevronRight, 
   Calendar as CalendarIcon, 
-  RotateCcw, 
   ClipboardCheck, 
   FileText,
   Bookmark,
   Sparkles,
   ArrowRightLeft,
-  Bell
+  LayoutGrid,
+  Sun,
+  Moon,
+  Pencil
 } from "lucide-react";
 import { AnimatePresence, motion } from "motion/react";
 
 const LOCAL_STORAGE_PLANS_KEY = "persian_notebook_plans_v1";
 const LOCAL_STORAGE_HABITS_KEY = "persian_notebook_habits_v1";
-const LOCAL_STORAGE_WEEKLY_KEY = "persian_notebook_weekly_v1";
-const LOCAL_STORAGE_MONTHLY_KEY = "persian_notebook_monthly_v1";
+const LOCAL_STORAGE_WEEKLY_REFLECTIONS_KEY = "persian_notebook_weekly_v1";
+const LOCAL_STORAGE_MONTHLY_REFLECTIONS_KEY = "persian_notebook_monthly_v1";
+const LOCAL_STORAGE_WEEKLY_PLANS_KEY = "persian_notebook_weekly_plans_v1";
+const LOCAL_STORAGE_THEME_KEY = "persian_notebook_theme_v1";
 
 const DEFAULT_HABITS: HabitDefinition[] = [
   { id: "h1", name: "مطالعه کتاب (۲۰ صفحه)" },
@@ -57,8 +63,10 @@ export default function App() {
   const [activeDate, setActiveDate] = React.useState<Date>(() => new Date());
   const [savedPlans, setSavedPlans] = React.useState<Record<string, DailyPlan>>({});
   const [habitDefinitions, setHabitDefinitions] = React.useState<HabitDefinition[]>([]);
+  const [weeklyPlans, setWeeklyPlans] = React.useState<Record<string, WeeklyPlan>>({});
   const [weeklyReflections, setWeeklyReflections] = React.useState<Record<string, WeeklyReflection>>({});
   const [monthlyReflections, setMonthlyReflections] = React.useState<Record<string, MonthlyReflection>>({});
+  const [themeMode, setThemeMode] = React.useState<"light" | "dark">("light");
   
   const [toastMessage, setToastMessage] = React.useState<string | null>(null);
   const [direction, setDirection] = React.useState<number>(0); 
@@ -66,7 +74,8 @@ export default function App() {
   // Mobile active tab: 'planner' | 'notes_schedule' | 'calendar_habits'
   const [mobileTab, setMobileTab] = React.useState<'planner' | 'notes_schedule' | 'calendar_habits'>('planner');
 
-  // Review Page triggers
+  // Modal triggers
+  const [showWeeklyPlanner, setShowWeeklyPlanner] = React.useState<boolean>(false);
   const [activeReview, setActiveReview] = React.useState<{ type: "weekly" | "monthly"; key: string } | null>(null);
 
   // Load initial data from LocalStorage
@@ -85,20 +94,37 @@ export default function App() {
         localStorage.setItem(LOCAL_STORAGE_HABITS_KEY, JSON.stringify(DEFAULT_HABITS));
       }
 
-      const storedWeekly = localStorage.getItem(LOCAL_STORAGE_WEEKLY_KEY);
+      const storedWeeklyPlans = localStorage.getItem(LOCAL_STORAGE_WEEKLY_PLANS_KEY);
+      if (storedWeeklyPlans) {
+        setWeeklyPlans(JSON.parse(storedWeeklyPlans));
+      }
+
+      const storedWeekly = localStorage.getItem(LOCAL_STORAGE_WEEKLY_REFLECTIONS_KEY);
       if (storedWeekly) {
         setWeeklyReflections(JSON.parse(storedWeekly));
       }
 
-      const storedMonthly = localStorage.getItem(LOCAL_STORAGE_MONTHLY_KEY);
+      const storedMonthly = localStorage.getItem(LOCAL_STORAGE_MONTHLY_REFLECTIONS_KEY);
       if (storedMonthly) {
         setMonthlyReflections(JSON.parse(storedMonthly));
+      }
+
+      const storedTheme = localStorage.getItem(LOCAL_STORAGE_THEME_KEY);
+      if (storedTheme === "dark" || storedTheme === "light") {
+        setThemeMode(storedTheme);
       }
     } catch (e) {
       console.error("Error loading local storage:", e);
       setHabitDefinitions(DEFAULT_HABITS);
     }
   }, []);
+
+  // Toggle Theme
+  const toggleTheme = () => {
+    const nextTheme = themeMode === "light" ? "dark" : "light";
+    setThemeMode(nextTheme);
+    localStorage.setItem(LOCAL_STORAGE_THEME_KEY, nextTheme);
+  };
 
   // Save plans to local storage
   const savePlan = (dateKey: string, updatedPlan: DailyPlan) => {
@@ -136,21 +162,6 @@ export default function App() {
     const totalDays = getDaysInJalaliMonth(activeJalali.jy, activeJalali.jm);
     return activeJalali.jd === totalDays;
   }, [activeJalali]);
-
-  // Automatic Weekly/Monthly Review Trigger
-  React.useEffect(() => {
-    const weekKey = getJalaliWeekKey(activeDate);
-    if (isFriday && !weeklyReflections[weekKey] && !activeReview) {
-      setActiveReview({ type: "weekly", key: weekKey });
-    }
-  }, [activeDate, isFriday, weeklyReflections, activeReview]);
-
-  React.useEffect(() => {
-    const monthKey = getJalaliMonthKey(activeDate);
-    if (isEndOfMonth && !monthlyReflections[monthKey] && !activeReview) {
-      setActiveReview({ type: "monthly", key: monthKey });
-    }
-  }, [activeDate, isEndOfMonth, monthlyReflections, activeReview]);
 
   // Load / Initialize data for the active date
   const currentPlan = React.useMemo(() => {
@@ -200,6 +211,16 @@ export default function App() {
     savePlan(activeDateKey, updatedPlan);
   };
 
+  // Handle Unified Task updates (tasks & timeline together)
+  const handleUnifiedTaskChange = (updatedTasks: TaskItem[], updatedTimeline: TimelineItem[]) => {
+    const updatedPlan: DailyPlan = {
+      ...currentPlan,
+      tasks: updatedTasks,
+      timeline: updatedTimeline
+    };
+    savePlan(activeDateKey, updatedPlan);
+  };
+
   // Global Habit Management
   const handleAddGlobalHabit = (name: string) => {
     const newHabit: HabitDefinition = {
@@ -209,7 +230,7 @@ export default function App() {
     const updated = [...habitDefinitions, newHabit];
     setHabitDefinitions(updated);
     localStorage.setItem(LOCAL_STORAGE_HABITS_KEY, JSON.stringify(updated));
-    showToast(`عادت جدید «${name}» با موفقیت افزوده شد.`);
+    showToast(`عادت جدید «${name}» اضافه شد.`);
   };
 
   const handleDeleteGlobalHabit = (id: string) => {
@@ -311,10 +332,10 @@ export default function App() {
 
     setSavedPlans(updatedAllPlans);
     localStorage.setItem(LOCAL_STORAGE_PLANS_KEY, JSON.stringify(updatedAllPlans));
-    showToast(`${toPersianDigits(newTasks.length)} کار جدید به لیست کارهای فردا اضافه شد! 📋`);
+    showToast(`${toPersianDigits(newTasks.length)} کار جدید به برنامه‌های فردا اضافه شد.`);
   };
 
-  // Yesterday's unfinished tasks check (rollover support)
+  // Unfinished tasks rollover
   const yesterdayUnfinished = React.useMemo(() => {
     const yesterday = new Date(activeDate);
     yesterday.setDate(yesterday.getDate() - 1);
@@ -345,7 +366,6 @@ export default function App() {
 
     const updatedTasks = [...currentPlan.tasks, ...newTasks];
 
-    // Bullet Journal: Mark yesterday's unfinished tasks as completed (migrated) to clear prompt
     const yesterday = new Date(activeDate);
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayKey = toGregorianDateString(yesterday);
@@ -370,7 +390,7 @@ export default function App() {
 
     setSavedPlans(updatedAllPlans);
     localStorage.setItem(LOCAL_STORAGE_PLANS_KEY, JSON.stringify(updatedAllPlans));
-    showToast(`تعداد ${toPersianDigits(newTasks.length)} کار ناتمام از دیروز با موفقیت منتقل شدند. 🌱`);
+    showToast(`تعداد ${toPersianDigits(newTasks.length)} کار ناتمام از دیروز منتقل گردید.`);
   };
 
   // Save reflection
@@ -378,17 +398,32 @@ export default function App() {
     if (activeReview?.type === "weekly") {
       const updatedList = { ...weeklyReflections, [activeReview.key]: updated };
       setWeeklyReflections(updatedList);
-      localStorage.setItem(LOCAL_STORAGE_WEEKLY_KEY, JSON.stringify(updatedList));
-      showToast("گزارش بازتاب هفتگی شما ثبت و ذخیره شد. 📔");
+      localStorage.setItem(LOCAL_STORAGE_WEEKLY_REFLECTIONS_KEY, JSON.stringify(updatedList));
+      showToast("گزارش بازتاب هفتگی ثبت شد.");
     } else if (activeReview?.type === "monthly") {
       const updatedList = { ...monthlyReflections, [activeReview.key]: updated };
       setMonthlyReflections(updatedList);
-      localStorage.setItem(LOCAL_STORAGE_MONTHLY_KEY, JSON.stringify(updatedList));
-      showToast("گزارش بازتاب ماهانه شما ثبت و ذخیره شد. 📔");
+      localStorage.setItem(LOCAL_STORAGE_MONTHLY_REFLECTIONS_KEY, JSON.stringify(updatedList));
+      showToast("گزارش بازتاب ماهانه ثبت شد.");
     }
   };
 
-  // General Calendar Activity Map
+  // Save Weekly Plan
+  const handleSaveWeeklyPlan = (weekKey: string, updatedWeeklyPlan: WeeklyPlan) => {
+    const updatedMap = {
+      ...weeklyPlans,
+      [weekKey]: updatedWeeklyPlan
+    };
+    setWeeklyPlans(updatedMap);
+    localStorage.setItem(LOCAL_STORAGE_WEEKLY_PLANS_KEY, JSON.stringify(updatedMap));
+  };
+
+  // Sync Weekly Plan item to Daily Plan
+  const handleSyncDailyPlan = (dateKey: string, updatedPlan: DailyPlan) => {
+    savePlan(dateKey, updatedPlan);
+  };
+
+  // Calendar Activity Map
   const activityMap = React.useMemo(() => {
     const map: Record<string, { total: number; completed: number; hasNotes: boolean }> = {};
     
@@ -423,7 +458,7 @@ export default function App() {
     return map;
   }, [savedPlans]);
 
-  // Day's progress summary
+  // Day progress summary
   const progressMetrics = React.useMemo(() => {
     let totalItems = 0;
     let completedItems = 0;
@@ -454,21 +489,21 @@ export default function App() {
 
     const percent = totalItems > 0 ? Math.round((completedItems / totalItems) * 100) : 0;
 
-    let feedback = "برگ جدیدی بگشایید و اهداف امروز خود را آرام بنویسید...";
+    let feedback = "صفحه امروز آماده است. اهداف آرام خود را بنویسید...";
     if (percent > 0 && percent <= 35) {
-      feedback = "شروع فوق‌العاده‌ای است! به آرامی جلو بروید 🌱";
+      feedback = "شروع بسیار خوبی است! به آرامی جلو بروید 🌱";
     } else if (percent > 35 && percent <= 75) {
-      feedback = "عالی است، بیشتر از نیمی از اهداف را پوشش داده‌اید ☕";
+      feedback = "بیشتر از نیمی از برنامه‌ها محقق گردید ☕";
     } else if (percent > 75 && percent < 100) {
-      feedback = "در یک قدمی ثبت نهایی یک روز پربار هستید! ✨";
+      feedback = "در یک قدمی ثبت یک روز کامل هستید! ✨";
     } else if (percent === 100) {
-      feedback = "یک روز شگفت‌انگیز را به پایان رساندید 🌟";
+      feedback = "یک روز کامل و آرام به پایان رسید 🌟";
     }
 
     return { totalItems, completedItems, percent, feedback };
   }, [currentPlan]);
 
-  // Ring Binder Generation
+  // Ring Binder
   const spiralRings = React.useMemo(() => {
     return Array.from({ length: 12 }).map((_, i) => (
       <div key={i} className="flex flex-col items-center justify-between h-9 my-3 select-none">
@@ -491,7 +526,7 @@ export default function App() {
       opacity: 1,
       x: 0,
       scale: 1,
-      transition: { duration: 0.35, ease: "easeOut" }
+      transition: { duration: 0.3, ease: "easeOut" }
     },
     exit: (dir: number) => ({
       opacity: 0,
@@ -501,85 +536,121 @@ export default function App() {
     })
   };
 
+  // Theme-dependent container styling
+  const isDark = themeMode === "dark";
+  const bgMain = isDark ? "bg-[#0b130e] text-[#f0f7f2]" : "bg-[#f2f6f3] text-[#1a231e]";
+  const headerBg = isDark ? "bg-[#15231b] border-[#293d30]" : "bg-white border-[#d2e0d5]";
+  const pageBg = isDark ? "bg-[#15231b] border-[#293d30]" : "bg-white border-[#d2e0d5]";
+  const spreadCoverBg = isDark ? "bg-[#0f1913] border-[#203227]" : "bg-[#dbe7de] border-[#c7dacd]";
+
   return (
-    <div className="min-h-screen bg-[#f4efe9] text-[#292524] flex flex-col items-center justify-start py-4 px-3 sm:px-6 md:py-6 font-sans selection:bg-[#eae0d5]">
+    <div className={`min-h-screen ${bgMain} flex flex-col items-center justify-start py-4 px-3 sm:px-6 md:py-6 font-sans selection:bg-[#2e4f40]/20 transition-colors duration-300`}>
       
       {/* Top Banner Navigation */}
-      <header className="w-full max-w-6xl flex flex-col sm:flex-row items-center justify-between gap-4 mb-5 bg-[#fcfbf9] border border-[#eaddcf] p-4 rounded-2xl paper-shadow select-none">
+      <header className={`w-full max-w-6xl flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4 mb-5 ${headerBg} p-4 sm:p-4.5 rounded-2xl paper-shadow select-none border transition-colors`}>
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-[#8c7851] text-white flex items-center justify-center paper-shadow">
-            <BookOpen size={20} />
+          <div className="w-11 h-11 rounded-xl bg-[#2e4f40] dark:bg-emerald-600 text-white flex items-center justify-center shadow-xs flex-shrink-0">
+            <BookOpen size={22} />
           </div>
           <div className="text-right">
-            <h1 className="text-base font-bold text-[#44403c] tracking-tight">دفترچه برنامه‌ریزی آرامش</h1>
-            <p className="text-[11px] text-[#8c7a5c]">یک ثبت با اصالت و الهام گرفته از صفحات کاغذی</p>
+            <h1 className="text-base sm:text-lg font-extrabold tracking-tight text-[#1a231e] dark:text-[#f0f7f2]">دفترچه برنامه‌ریزی آرامش</h1>
+            <p className="text-[11px] sm:text-xs font-medium text-[#526357] dark:text-[#a8c2b2]">طراحی کاغذی، مینیمال و کاربرپسند</p>
           </div>
         </div>
 
         {/* Action Shortcuts & Date Navigation */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Review Manual Links */}
-          <button
-            id="open-weekly-review"
-            onClick={() => setActiveReview({ type: "weekly", key: getJalaliWeekKey(activeDate) })}
-            className="px-3 py-1.5 rounded-xl border border-[#eaddcf] bg-white hover:bg-[#faf7f2] text-[#8c7851] font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <Bookmark size={12} className="fill-[#8c7851]/10" />
-            <span>مرور هفته</span>
-          </button>
-
-          <button
-            id="open-monthly-review"
-            onClick={() => setActiveReview({ type: "monthly", key: getJalaliMonthKey(activeDate) })}
-            className="px-3 py-1.5 rounded-xl border border-[#eaddcf] bg-white hover:bg-[#faf7f2] text-[#8c7851] font-bold text-xs transition-all flex items-center gap-1.5 cursor-pointer"
-          >
-            <Bookmark size={12} className="fill-[#8c7851]/20" />
-            <span>مرور ماه</span>
-          </button>
-
-          {/* Nav Controls */}
-          <div className="flex items-center gap-1 bg-[#faf7f2] border border-[#eaddcf] p-1 rounded-xl">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full lg:w-auto">
+          
+          {/* Main 3 Navigation Buttons Grid */}
+          <div className="grid grid-cols-3 gap-1.5 sm:gap-2 w-full sm:w-auto flex-1">
+            {/* Weekly Planner Trigger */}
             <button
-              id="nav-prev"
-              onClick={goToPreviousDay}
-              className="p-1.5 rounded-lg hover:bg-white text-[#574f41] transition-all cursor-pointer"
+              id="open-weekly-planner"
+              onClick={() => setShowWeeklyPlanner(true)}
+              className="px-1.5 sm:px-3.5 py-2 min-h-[44px] rounded-xl bg-[#2e4f40] dark:bg-emerald-600 hover:bg-[#233f33] dark:hover:bg-emerald-500 text-white font-bold text-[11px] sm:text-xs transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer shadow-xs active:scale-95 text-center leading-tight"
             >
-              <ChevronRight size={16} />
+              <LayoutGrid size={14} className="flex-shrink-0" />
+              <span>برنامه‌ریزی هفتگی</span>
             </button>
 
-            <div className="px-3 py-1 bg-white rounded-lg text-[#574f41] font-semibold text-xs flex items-center gap-1.5 shadow-sm border border-[#f0e4d7]">
-              <CalendarIcon size={12} className="text-[#a89a7a]" />
-              <span>{formatPersianDate(activeDate)}</span>
+            {/* Weekly Review */}
+            <button
+              id="open-weekly-review"
+              onClick={() => setActiveReview({ type: "weekly", key: getJalaliWeekKey(activeDate) })}
+              className="px-1.5 sm:px-3.5 py-2 min-h-[44px] rounded-xl border border-[#d2e0d5] dark:border-[#2f4335] bg-[#f8faf8] dark:bg-[#1a2920] text-[#2e4f40] dark:text-[#aee2c2] font-bold text-[11px] sm:text-xs transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer hover:bg-[#eaf0ec] dark:hover:bg-[#24372b] shadow-2xs active:scale-95 text-center leading-tight"
+            >
+              <Bookmark size={13} className="fill-[#2e4f40]/30 dark:fill-emerald-400/30 flex-shrink-0" />
+              <span>مرور هفته</span>
+            </button>
+
+            {/* Monthly Review */}
+            <button
+              id="open-monthly-review"
+              onClick={() => setActiveReview({ type: "monthly", key: getJalaliMonthKey(activeDate) })}
+              className="px-1.5 sm:px-3.5 py-2 min-h-[44px] rounded-xl border border-[#d2e0d5] dark:border-[#2f4335] bg-[#f8faf8] dark:bg-[#1a2920] text-[#2e4f40] dark:text-[#aee2c2] font-bold text-[11px] sm:text-xs transition-all flex items-center justify-center gap-1 sm:gap-1.5 cursor-pointer hover:bg-[#eaf0ec] dark:hover:bg-[#24372b] shadow-2xs active:scale-95 text-center leading-tight"
+            >
+              <Bookmark size={13} className="fill-[#2e4f40]/50 dark:fill-emerald-400/50 flex-shrink-0" />
+              <span>مرور ماه</span>
+            </button>
+          </div>
+
+          <div className="flex items-center gap-2 justify-between sm:justify-start">
+            {/* Dark Mode Toggle */}
+            <button
+              id="theme-toggle-btn"
+              onClick={toggleTheme}
+              className="p-2.5 min-h-[44px] min-w-[44px] rounded-xl border border-[#d2e0d5] dark:border-[#2f4335] bg-[#f8faf8] dark:bg-[#1a2920] text-[#1a231e] dark:text-[#eef4f0] hover:bg-[#eaf0ec] dark:hover:bg-[#24372b] cursor-pointer transition-all shadow-2xs flex items-center justify-center"
+              title={isDark ? "تغییر به پوسته کاغذ کاهی روشن" : "تغییر به پوسته تیره سرسبز"}
+            >
+              {isDark ? <Sun size={18} className="text-emerald-400" /> : <Moon size={18} className="text-[#2e4f40]" />}
+            </button>
+
+            {/* Day Nav Controls */}
+            <div className="flex items-center gap-1 bg-[#eaf0ec] dark:bg-[#121d16] border border-[#d2e0d5] dark:border-[#2f4335] p-1 rounded-xl text-[#1a231e] dark:text-[#eef4f0] min-h-[44px]">
+              <button
+                id="nav-prev"
+                onClick={goToPreviousDay}
+                className="p-2 rounded-lg hover:bg-white dark:hover:bg-[#24372b] transition-all cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center text-[#526357] dark:text-[#c2dacb] hover:text-[#1a231e] dark:hover:text-white"
+                title="روز قبل"
+              >
+                <ChevronRight size={17} />
+              </button>
+
+              <div className="px-3 py-1 bg-white dark:bg-[#24372b] rounded-lg font-bold text-xs flex items-center gap-1.5 shadow-2xs border border-[#d2e0d5] dark:border-[#384c3f] text-[#1a231e] dark:text-[#f0f7f2] whitespace-nowrap">
+                <CalendarIcon size={14} className="text-[#2e4f40] dark:text-emerald-400" />
+                <span>{formatPersianDate(activeDate)}</span>
+              </div>
+
+              <button
+                id="nav-today"
+                onClick={resetToToday}
+                className="px-2.5 py-1 rounded-lg text-[#2e4f40] dark:text-[#aee2c2] font-extrabold text-[11px] hover:bg-white dark:hover:bg-[#24372b] transition-all cursor-pointer whitespace-nowrap"
+              >
+                امروز
+              </button>
+
+              <button
+                id="nav-next"
+                onClick={goToNextDay}
+                className="p-2 rounded-lg hover:bg-white dark:hover:bg-[#24372b] transition-all cursor-pointer min-w-[36px] min-h-[36px] flex items-center justify-center text-[#526357] dark:text-[#c2dacb] hover:text-[#1a231e] dark:hover:text-white"
+                title="روز بعد"
+              >
+                <ChevronLeft size={17} />
+              </button>
             </div>
-
-            <button
-              id="nav-today"
-              onClick={resetToToday}
-              className="px-2 py-1 rounded-lg text-[#8c7851] font-bold text-[10px] hover:bg-white transition-all cursor-pointer"
-            >
-              امروز
-            </button>
-
-            <button
-              id="nav-next"
-              onClick={goToNextDay}
-              className="p-1.5 rounded-lg hover:bg-white text-[#574f41] transition-all cursor-pointer"
-            >
-              <ChevronLeft size={16} />
-            </button>
           </div>
         </div>
       </header>
 
       {/* Mobile-Only Tabs Header */}
-      <div className="w-full max-w-6xl md:hidden flex border-b border-[#eaddcf] mb-4 select-none">
+      <div className="w-full max-w-6xl md:hidden flex border-b border-[#d2e0d5] dark:border-[#2f4335] mb-4 select-none bg-white dark:bg-[#15231b] rounded-xl p-1 shadow-2xs gap-1">
         <button
           id="m-tab-planner"
           onClick={() => setMobileTab('planner')}
-          className={`flex-1 py-2.5 text-center text-xs font-semibold transition-all
+          className={`flex-1 py-2.5 text-center text-xs font-bold transition-all min-h-[44px] rounded-lg cursor-pointer flex items-center justify-center
             ${mobileTab === 'planner' 
-              ? "text-[#8c7851] border-b-2 border-[#8c7851]" 
-              : "text-[#8c7a5c]"
+              ? "bg-[#2e4f40] dark:bg-emerald-600 text-white shadow-2xs" 
+              : "text-[#526357] dark:text-[#a8c2b2] hover:bg-[#eaf0ec] dark:hover:bg-[#1a2920]"
             }
           `}
         >
@@ -588,26 +659,26 @@ export default function App() {
         <button
           id="m-tab-notes"
           onClick={() => setMobileTab('notes_schedule')}
-          className={`flex-1 py-2.5 text-center text-xs font-semibold transition-all
+          className={`flex-1 py-2.5 text-center text-xs font-bold transition-all min-h-[44px] rounded-lg cursor-pointer flex items-center justify-center
             ${mobileTab === 'notes_schedule' 
-              ? "text-[#8c7851] border-b-2 border-[#8c7851]" 
-              : "text-[#8c7a5c]"
+              ? "bg-[#2e4f40] dark:bg-emerald-600 text-white shadow-2xs" 
+              : "text-[#526357] dark:text-[#a8c2b2] hover:bg-[#eaf0ec] dark:hover:bg-[#1a2920]"
             }
           `}
         >
-          زمان‌بندی و یادداشت
+          یادداشت و تقویم
         </button>
         <button
           id="m-tab-calendar"
           onClick={() => setMobileTab('calendar_habits')}
-          className={`flex-1 py-2.5 text-center text-xs font-semibold transition-all
+          className={`flex-1 py-2.5 text-center text-xs font-bold transition-all min-h-[44px] rounded-lg cursor-pointer flex items-center justify-center
             ${mobileTab === 'calendar_habits' 
-              ? "text-[#8c7851] border-b-2 border-[#8c7851]" 
-              : "text-[#8c7a5c]"
+              ? "bg-[#2e4f40] dark:bg-emerald-600 text-white shadow-2xs" 
+              : "text-[#526357] dark:text-[#a8c2b2] hover:bg-[#eaf0ec] dark:hover:bg-[#1a2920]"
             }
           `}
         >
-          تقویم و ردیاب عادت
+          عادت‌ها و یادآوری
         </button>
       </div>
 
@@ -615,14 +686,14 @@ export default function App() {
       <main className="w-full max-w-6xl flex-1 flex flex-col justify-stretch relative">
         
         {/* Double-Page Spread */}
-        <div className="w-full grid grid-cols-1 md:grid-cols-21 gap-0 bg-[#e6ded5] rounded-3xl p-1 sm:p-2 md:p-3 shadow-xl border border-[#dbcfc2] min-h-[720px] relative">
+        <div className={`w-full grid grid-cols-1 md:grid-cols-21 gap-0 ${spreadCoverBg} rounded-3xl p-1.5 sm:p-2.5 md:p-3.5 shadow-xl min-h-[720px] relative transition-colors`}>
           
-          {/* LEFT PAGE - Priorities, Tasks, Reminders */}
-          <div className={`md:col-span-10 flex flex-col bg-[#fcfbf9] rounded-2xl p-4 sm:p-6 left-page-curl border border-[#eaddcf] transition-all relative overflow-hidden
+          {/* LEFT PAGE - Priorities, Unified Tasks, Reminders */}
+          <div className={`md:col-span-10 flex flex-col ${pageBg} rounded-2xl p-4 sm:p-6 left-page-curl transition-all relative overflow-hidden border
             ${mobileTab === 'planner' ? 'block' : 'hidden md:block'}
           `}>
             {/* Lined margins style decoration */}
-            <div className="absolute right-10 top-0 bottom-0 w-[1px] border-r border-[#fca5a5] opacity-35 pointer-events-none" />
+            <div className="absolute right-10 top-0 bottom-0 w-[1px] border-r border-emerald-300 opacity-25 pointer-events-none" />
 
             <AnimatePresence mode="popLayout" custom={direction}>
               <motion.div
@@ -632,44 +703,44 @@ export default function App() {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="space-y-5 flex-1 relative z-10 flex flex-col justify-start"
+                className="space-y-4 flex-1 relative z-10 flex flex-col justify-start"
               >
                 
                 {/* Header Section with Progress summary */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#f5ebe0] pb-3">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 border-b border-[#e2ece4] dark:border-[#2d3e33] pb-3">
                   <div>
-                    <span className="text-[10px] font-bold text-[#8c7851] select-none block tracking-wide">روزشمار برنامه</span>
-                    <h2 className="text-lg font-bold text-[#44403c]">اهداف و اولویت‌ها</h2>
+                    <span className="text-[10px] font-bold text-[#2e4f40] dark:text-[#a8c2b2] select-none block tracking-wide">روزشمار برنامه</span>
+                    <h2 className="text-base sm:text-lg font-extrabold text-[#1a231e] dark:text-[#eef4f0]">اهداف و اولویت‌ها</h2>
                   </div>
 
                   {/* Minimal circle progress */}
-                  <div className="flex items-center gap-2 bg-[#faf7f2] border border-[#f2e7da] py-1.5 px-2.5 rounded-xl">
+                  <div className="flex items-center gap-2 bg-[#f8faf8] dark:bg-[#19241e] border border-[#d2e0d5] dark:border-[#2d3e33] py-1.5 px-3 rounded-xl shadow-2xs">
                     <div className="relative w-8 h-8 flex items-center justify-center">
                       <svg className="w-full h-full transform -rotate-90">
-                        <circle cx="16" cy="16" r="13" className="stroke-[#eae0d5]" strokeWidth="2.5" fill="transparent" />
+                        <circle cx="16" cy="16" r="13" className="stroke-[#d2e0d5] dark:stroke-[#2d3e33]" strokeWidth="2.5" fill="transparent" />
                         <circle
                           cx="16"
                           cy="16"
                           r="13"
-                          className="stroke-[#8c7851] transition-all duration-500"
+                          className="stroke-[#2e4f40] dark:stroke-[#a8c2b2] transition-all duration-500"
                           strokeWidth="2.5"
                           fill="transparent"
                           strokeDasharray={2 * Math.PI * 13}
                           strokeDashoffset={2 * Math.PI * 13 * (1 - progressMetrics.percent / 100)}
                         />
                       </svg>
-                      <span className="absolute text-[9px] font-bold text-[#574f41]">
+                      <span className="absolute text-[9px] font-extrabold text-[#1a231e] dark:text-[#eef4f0]">
                         {toPersianDigits(progressMetrics.percent)}٪
                       </span>
                     </div>
-                    <span className="text-[11px] font-bold text-[#574f41]">
+                    <span className="text-[11px] font-bold text-[#2e4f40] dark:text-[#a8c2b2]">
                       {toPersianDigits(progressMetrics.completedItems)} از {toPersianDigits(progressMetrics.totalItems)} کار
                     </span>
                   </div>
                 </div>
 
                 {/* Motivational feedback line */}
-                <p className="text-[11px] text-[#8c7a5c] italic border-r-2 border-[#8c7a5c] pr-2 select-none">
+                <p className="text-[11px] text-[#526357] dark:text-[#9db0a3] font-medium italic border-r-2 border-[#2e4f40] pr-2.5 select-none">
                   {progressMetrics.feedback}
                 </p>
 
@@ -678,18 +749,18 @@ export default function App() {
                   <motion.div
                     initial={{ opacity: 0, y: -10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    className="p-3 bg-amber-50/70 border border-amber-200/70 rounded-xl flex items-center justify-between gap-3"
+                    className="p-3 bg-[#eaf0ec]/90 border border-[#cfdcd3] rounded-xl flex items-center justify-between gap-3 shadow-2xs"
                   >
                     <div className="flex items-center gap-2">
-                      <ArrowRightLeft size={14} className="text-amber-700 animate-pulse" />
-                      <span className="text-xs text-amber-900 font-medium">
+                      <ArrowRightLeft size={14} className="text-[#2e4f40] animate-pulse flex-shrink-0" />
+                      <span className="text-xs text-[#1a231e] font-bold">
                         {toPersianDigits(yesterdayUnfinished.length)} کار ناتمام از دیروز باقی مانده است.
                       </span>
                     </div>
                     <button
                       id="carryover-yesterday-btn"
                       onClick={handleCarryOverYesterday}
-                      className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-colors active:scale-95"
+                      className="px-3 py-1.5 bg-[#2e4f40] hover:bg-[#233f33] text-white rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-95 min-h-[36px] shadow-2xs"
                     >
                       انتقال به امروز
                     </button>
@@ -710,10 +781,11 @@ export default function App() {
                   onChange={(p) => updateActivePlanField("priorities", p)}
                 />
 
-                {/* Checklist task list */}
-                <TaskList 
+                {/* Unified Tasks List (Scheduled & Unscheduled) */}
+                <UnifiedTaskList 
                   tasks={currentPlan.tasks}
-                  onChange={(t) => updateActivePlanField("tasks", t)}
+                  timeline={currentPlan.timeline}
+                  onChange={handleUnifiedTaskChange}
                 />
 
                 {/* Reminders list */}
@@ -731,12 +803,12 @@ export default function App() {
             {spiralRings}
           </div>
 
-          {/* RIGHT PAGE - Calendar, Schedule, Notes, Habits, Tomorrow */}
-          <div className={`md:col-span-10 flex flex-col bg-[#fcfbf9] rounded-2xl p-4 sm:p-6 right-page-curl border border-[#eaddcf] transition-all relative overflow-hidden
+          {/* RIGHT PAGE - Calendar, Notes, Habits, Tomorrow */}
+          <div className={`md:col-span-10 flex flex-col ${pageBg} rounded-2xl p-4 sm:p-6 right-page-curl transition-all relative overflow-hidden border
             ${mobileTab === 'notes_schedule' || mobileTab === 'calendar_habits' ? 'block' : 'hidden md:block'}
           `}>
             {/* Lined margins style decoration */}
-            <div className="absolute left-10 top-0 bottom-0 w-[1px] border-l border-[#fca5a5] opacity-35 pointer-events-none" />
+            <div className="absolute left-10 top-0 bottom-0 w-[1px] border-l border-emerald-300 opacity-25 pointer-events-none" />
 
             <AnimatePresence mode="popLayout" custom={direction}>
               <motion.div
@@ -746,45 +818,45 @@ export default function App() {
                 initial="initial"
                 animate="animate"
                 exit="exit"
-                className="space-y-5 flex-1 relative z-10 flex flex-col justify-start"
+                className="space-y-4 flex-1 relative z-10 flex flex-col justify-start"
               >
                 
                 {/* Right page sub-header */}
-                <div className="flex items-center justify-between border-b border-[#f5ebe0] pb-3">
+                <div className="flex items-center justify-between border-b border-[#e2ece4] dark:border-[#2d3e33] pb-3">
                   <div>
-                    <span className="text-[10px] font-bold text-[#8c7851] select-none block tracking-wide">برنامه‌ریزی جزئیات</span>
-                    <h2 className="text-lg font-bold text-[#44403c]">ثبت وقایع روزانه</h2>
+                    <span className="text-[10px] font-bold text-[#2e4f40] dark:text-[#a8c2b2] select-none block tracking-wide">برنامه‌ریزی جزئیات</span>
+                    <h2 className="text-base sm:text-lg font-extrabold text-[#1a231e] dark:text-[#eef4f0]">ثبت وقایع و تقویم</h2>
                   </div>
                   
-                  <span className="text-[10px] font-mono text-[#a89a7a] font-semibold bg-[#faf7f2] border border-[#eaddcf] px-2 py-0.5 rounded-lg">
+                  <span className="text-[10px] font-mono font-bold bg-[#eaf0ec] dark:bg-[#19241e] border border-[#cfdcd3] dark:border-[#2d3e33] px-2.5 py-1 rounded-lg text-[#2e4f40] dark:text-[#a8c2b2]">
                     {activeDateKey}
                   </span>
                 </div>
 
-                {/* If on Mobile Tab 'notes_schedule', show Schedule + Notes + Tomorrow */}
+                {/* If on Mobile Tab 'notes_schedule', show Notes + Tomorrow */}
                 {(!window.matchMedia("(max-width: 768px)").matches || mobileTab === 'notes_schedule') && (
-                  <div className="space-y-5">
-                    {/* Timeline Schedule */}
-                    <TimelineSchedule 
-                      timeline={currentPlan.timeline}
-                      onChange={(tl) => updateActivePlanField("timeline", tl)}
-                    />
-
+                  <div className="space-y-4">
+                    
                     {/* Rules Lined Pad Notes */}
-                    <div className="space-y-1.5">
-                      <div className="flex items-center gap-1.5">
-                        <FileText size={14} className="text-[#c5a880]" />
-                        <h3 className="text-xs font-semibold text-[#574f41]">یادداشت‌های آزاد روزانه</h3>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <div className="p-1 rounded-md bg-[#eaf0ec] text-[#2e4f40] border border-[#cfdcd3]">
+                            <FileText size={15} />
+                          </div>
+                          <h3 className="text-xs sm:text-sm font-bold text-[#1a231e] dark:text-[#eef4f0]">یادداشت‌های آزاد روزانه</h3>
+                        </div>
+                        <Pencil size={13} className="text-[#2e4f40]" />
                       </div>
 
-                      <div className="lined-paper relative rounded-2xl border border-[#eaddcf] bg-[#fdfdfc] p-3 min-h-[160px] shadow-inner">
+                      <div className="lined-paper relative rounded-2xl border border-[#d2e0d5] dark:border-[#2d3e33] bg-[#f8faf8] dark:bg-[#19241e] p-3.5 shadow-2xs">
                         <textarea
                           id="daily-notes-input"
                           value={currentPlan.notes}
                           onChange={(e) => updateActivePlanField("notes", e.target.value)}
-                          placeholder="افکار، اتفاقات الهام‌بخش یا کارهای متفرقه خود را یادداشت کنید..."
-                          className="w-full h-full bg-transparent border-none focus:outline-none text-xs text-[#44403c] placeholder-[#d0c6b8] resize-none"
-                          style={{ lineHeight: "2.25rem", minHeight: "140px" }}
+                          placeholder="افکار، اتفاقات الهام‌بخش یا کارهای متفرقه خود را بنویسید..."
+                          className="w-full h-full bg-transparent border-none focus:outline-none text-xs sm:text-sm text-[#1a231e] dark:text-[#eef4f0] placeholder-[#829487] font-medium resize-none"
+                          style={{ lineHeight: "2.25rem", minHeight: "150px" }}
                         />
                       </div>
                     </div>
@@ -795,19 +867,19 @@ export default function App() {
                       onChange={(text) => updateActivePlanField("planTomorrow", text)}
                       onPromoteToTomorrow={handlePromoteTomorrow}
                     />
-                  </div>
-                )}
 
-                {/* If on Mobile Tab 'calendar_habits', show Calendar + Habits */}
-                {(!window.matchMedia("(max-width: 768px)").matches || mobileTab === 'calendar_habits') && (
-                  <div className="space-y-5">
                     {/* Persian Calendar */}
                     <PersianCalendar 
                       activeDate={activeDate}
                       onDateChange={handleDateSelect}
                       activityMap={activityMap}
                     />
+                  </div>
+                )}
 
+                {/* If on Mobile Tab 'calendar_habits', show Habits + Calendar */}
+                {(!window.matchMedia("(max-width: 768px)").matches || mobileTab === 'calendar_habits') && (
+                  <div className="space-y-4">
                     {/* Habit Tracker */}
                     <HabitTracker 
                       dayHabits={currentPlan.habits}
@@ -825,7 +897,7 @@ export default function App() {
 
         </div>
 
-        {/* Floating Handwritten Sticky Toast Message */}
+        {/* Sticky Toast Message */}
         <AnimatePresence>
           {toastMessage && (
             <motion.div
@@ -833,16 +905,30 @@ export default function App() {
               initial={{ opacity: 0, y: 30, rotate: -2 }}
               animate={{ opacity: 1, y: 0, rotate: -1 }}
               exit={{ opacity: 0, y: -20, rotate: 2 }}
-              className="fixed bottom-6 left-6 z-50 max-w-sm bg-amber-50 border border-amber-200 text-[#574f41] p-3 rounded-xl shadow-lg left-page-curl select-none"
+              className="fixed bottom-6 left-6 z-50 max-w-sm bg-[#eaf0ec] border border-[#cfdcd3] text-[#1a231e] p-3 rounded-xl shadow-lg left-page-curl select-none"
             >
               <div className="flex items-start gap-2">
-                <ClipboardCheck size={18} className="text-amber-700 mt-0.5 flex-shrink-0" />
+                <ClipboardCheck size={18} className="text-[#2e4f40] mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="text-[11px] font-bold text-amber-800">برگه یادداشت</h4>
-                  <p className="text-[11px] text-[#6b6661] mt-0.5 leading-relaxed">{toastMessage}</p>
+                  <h4 className="text-[11px] font-bold text-[#2e4f40]">دفترچه برنامه‌ریزی</h4>
+                  <p className="text-[11px] text-[#526357] mt-0.5 leading-relaxed">{toastMessage}</p>
                 </div>
               </div>
             </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Dedicated Weekly Planning Modal */}
+        <AnimatePresence>
+          {showWeeklyPlanner && (
+            <WeeklyPlanner 
+              currentDate={activeDate}
+              savedPlans={savedPlans}
+              weeklyPlans={weeklyPlans}
+              onSaveWeeklyPlan={handleSaveWeeklyPlan}
+              onSyncDailyPlan={handleSyncDailyPlan}
+              onClose={() => setShowWeeklyPlanner(false)}
+            />
           )}
         </AnimatePresence>
 
@@ -857,6 +943,7 @@ export default function App() {
                 weekKey: activeReview.key,
                 whatWentWell: "",
                 whatToImprove: "",
+                biggestAchievement: "",
                 mainFocusNextWeek: ""
               }) : (monthlyReflections[activeReview.key] || {
                 monthKey: activeReview.key,
@@ -873,7 +960,7 @@ export default function App() {
       </main>
 
       {/* Footer Design Credits */}
-      <footer className="mt-6 text-center text-[11px] text-[#a89a7a] select-none">
+      <footer className="mt-6 text-center text-[11px] opacity-75 select-none text-[#526357] dark:text-[#b0d2bc]">
         <p>دفترچه برنامه‌ریزی آرامش‌بخش • کارهای ناتمام به‌طور هوشمند منتقل می‌شوند.</p>
       </footer>
 

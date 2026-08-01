@@ -2,6 +2,7 @@ export interface TaskItem {
   id: string;
   text: string;
   completed: boolean;
+  time?: string; // e.g. "۰۸:۰۰" or "08:00" if assigned to a time slot
 }
 
 export interface HabitItem {
@@ -42,10 +43,23 @@ export interface DailyPlan {
   reminders?: ReminderItem[]; // Option to have reminders for the day
 }
 
+export interface DayWeeklyData {
+  priorities: PriorityItem[];
+  tasks: TaskItem[];
+  notes: string;
+}
+
+export interface WeeklyPlan {
+  weekKey: string; // e.g., "1405-W18"
+  weeklyGoal?: string;
+  days: Record<string, DayWeeklyData>; // dateKey -> DayWeeklyData
+}
+
 export interface WeeklyReflection {
   weekKey: string; // e.g., "1405-W18"
   whatWentWell: string;
   whatToImprove: string;
+  biggestAchievement?: string;
   mainFocusNextWeek: string;
   completedAt?: string; // date ISO string
 }
@@ -57,6 +71,7 @@ export interface MonthlyReflection {
   mainFocusNextMonth: string;
   completedAt?: string; // date ISO string
 }
+
 
 
 export interface HabitDefinition {
